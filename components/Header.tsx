@@ -1,6 +1,6 @@
 import { createHomeStyles } from "@/assets/styles/home.styles";
+import { useTodos } from "@/contexts/TodoContext";
 import useTheme from "@/hooks/useTheme";
-import { useTodos } from "@/hooks/useTodos";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import React from "react";

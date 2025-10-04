@@ -233,6 +233,19 @@ export const createHomeStyles = (colors: ColorScheme) => {
       lineHeight: 24,
       color: colors.textMuted,
     },
+    selectAllButton: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      paddingHorizontal: 20,
+      paddingVertical: 12,
+      borderRadius: 12,
+      gap: 8,
+    },
+    selectAllText: {
+      fontSize: 16,
+      fontWeight: "600",
+    },
   });
 
   return styles;

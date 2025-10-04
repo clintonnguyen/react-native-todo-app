@@ -9,9 +9,30 @@ import {
   updateTodo,
 } from "@/lib/todos";
 import { CreateTodoData, Todo, UpdateTodoData } from "@/types/todo";
-import { useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useState } from "react";
 
-export const useTodos = () => {
+interface TodoContextType {
+  todos: Todo[];
+  loading: boolean;
+  error: string | null;
+  createTodo: (todoData: CreateTodoData) => Promise<Todo | undefined>;
+  updateTodo: (
+    id: string,
+    updates: UpdateTodoData
+  ) => Promise<Todo | undefined>;
+  deleteTodo: (id: string) => Promise<void>;
+  toggleTodo: (id: string) => Promise<Todo | undefined>;
+  refetch: () => Promise<void>;
+  clearAllTodos: () => Promise<{ deletedCount: number } | undefined>;
+  selectAllTodos: () => Promise<void>;
+  unselectAllTodos: () => Promise<void>;
+}
+
+const TodoContext = createContext<TodoContextType | undefined>(undefined);
+
+export const TodoProvider: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
   const { session } = useAuth();
   const [todos, setTodos] = useState<Todo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -19,22 +40,13 @@ export const useTodos = () => {
 
   // Fetch todos for the current user
   const fetchTodos = async () => {
-    if (!session?.user) {
-      console.log("No session or user found");
-      return;
-    }
-
-    console.log("Fetching todos for user ID:", session.user.id);
+    if (!session?.user) return;
 
     try {
       setLoading(true);
       setError(null);
 
       const data = await getTodos(session.user.id);
-
-      console.log("Fetched todos:", data?.length, "for user:", session.user.id);
-      console.log("All todos in DB:", data);
-
       setTodos(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch todos");
@@ -51,15 +63,7 @@ export const useTodos = () => {
       setError(null);
 
       const data = await addTodo(session.user.id, todoData.title);
-
-      console.log("Todo created:", data);
-      console.log("Current todos before update:", todos.length);
-
-      setTodos((prev) => {
-        const newTodos = [data, ...prev];
-        console.log("New todos after update:", newTodos.length);
-        return newTodos;
-      });
+      setTodos((prev) => [data, ...prev]);
 
       return data;
     } catch (err) {
@@ -128,6 +132,90 @@ export const useTodos = () => {
     }
   };
 
+  // Select all todos (mark all as completed)
+  const selectAllTodos = async () => {
+    if (!session?.user) return;
+
+    try {
+      setError(null);
+
+      // Get all incomplete todos
+      const incompleteTodos = todos.filter((todo) => !todo.completed);
+
+      if (incompleteTodos.length === 0) return;
+
+      // Update all incomplete todos to completed using direct Supabase calls
+      const { error } = await supabase
+        .from("todos")
+        .update({
+          completed: true,
+          updated_at: new Date().toISOString(),
+        })
+        .in(
+          "id",
+          incompleteTodos.map((todo) => todo.id)
+        );
+
+      if (error) throw error;
+
+      // Update local state
+      setTodos((prev) =>
+        prev.map((todo) =>
+          incompleteTodos.some((incomplete) => incomplete.id === todo.id)
+            ? { ...todo, completed: true }
+            : todo
+        )
+      );
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to select all todos"
+      );
+      throw err;
+    }
+  };
+
+  // Unselect all todos (mark all completed todos as incomplete)
+  const unselectAllTodos = async () => {
+    if (!session?.user) return;
+
+    try {
+      setError(null);
+
+      // Get all completed todos
+      const completedTodos = todos.filter((todo) => todo.completed);
+
+      if (completedTodos.length === 0) return;
+
+      // Update all completed todos to incomplete using direct Supabase calls
+      const { error } = await supabase
+        .from("todos")
+        .update({
+          completed: false,
+          updated_at: new Date().toISOString(),
+        })
+        .in(
+          "id",
+          completedTodos.map((todo) => todo.id)
+        );
+
+      if (error) throw error;
+
+      // Update local state
+      setTodos((prev) =>
+        prev.map((todo) =>
+          completedTodos.some((completed) => completed.id === todo.id)
+            ? { ...todo, completed: false }
+            : todo
+        )
+      );
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to unselect all todos"
+      );
+      throw err;
+    }
+  };
+
   // Fetch todos when session changes
   useEffect(() => {
     if (session?.user) {
@@ -138,7 +226,7 @@ export const useTodos = () => {
     }
   }, [session?.user]);
 
-  return {
+  const value: TodoContextType = {
     todos,
     loading,
     error,
@@ -159,5 +247,17 @@ export const useTodos = () => {
         throw err;
       }
     },
+    selectAllTodos,
+    unselectAllTodos,
   };
+
+  return <TodoContext.Provider value={value}>{children}</TodoContext.Provider>;
+};
+
+export const useTodos = () => {
+  const context = useContext(TodoContext);
+  if (context === undefined) {
+    throw new Error("useTodos must be used within a TodoProvider");
+  }
+  return context;
 };
